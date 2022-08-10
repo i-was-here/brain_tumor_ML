@@ -1,0 +1,5 @@
+.gitignore
+*.gz
+*.nii
+*.npy
+*.tif
