@@ -1,5 +1,10 @@
 .gitignore
+*.npy
 *.gz
 *.nii
-*.npy
 *.tif
+test.ipynb
+code2.py
+Preprocessed/
+tempCodeRunnerFile.py
+lightning_logs/
