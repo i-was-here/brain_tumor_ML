@@ -1,6 +1,0 @@
-.gitignore
-*.npy
-*.gz
-*.nii
-*.tif
-code2.py
