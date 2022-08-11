@@ -4,7 +4,7 @@ import glob
 import imgaug.augmenters as iaa
 import pytorch_lightning as pl
 import torchvision
-from torchvision.models.detection.mask_rcnn import MaskRCNN
+from torchvision.models.detection.mask_rcnn import maskrcnn_resnet50_fpn
 from torchvision.models.feature_extraction import create_feature_extractor
 
 
@@ -79,9 +79,9 @@ class classifn_model(torch.nn.Module):
 
 
 class tumor_classifn(pl.LightningModule):
-    def __init__(self, backbone):
+    def __init__(self):
         super().__init__()
-        self.model = MaskRCNN(backbone=backbone)
+        self.model = maskrcnn_resnet50_fpn(pretrained=True)
         self.opt = torch.optim.Adam(self.model.parameters())
         self.loss_func = DiceLoss()
     
@@ -116,8 +116,6 @@ test_loader = torch.utils.data.DataLoader(test_data, batch_size=1, shuffle=True)
 # ])
 
 trainer = pl.Trainer(max_epochs=8)
-model_pretrained = torchvision.models.resnet18(pretrained=True)
-backbn = create_feature_extractor(model_pretrained)
-model = tumor_classifn(backbone=backbn)
+model = tumor_classifn()
 trainer.fit(model=model, train_dataloaders=train_loader)
 trainer.test(model=model, dataloaders=test_loader)
