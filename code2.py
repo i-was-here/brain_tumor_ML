@@ -78,6 +78,40 @@ class classifn_model(torch.nn.Module):
         return self.soft(x)
 
 
+def bounding_box(img):
+    y1 = -1
+    for each_row in img:
+        if(torch.equal(each_row, torch.Tensor([0.0 for i in range(176)]))): y1 += 1
+        else: break
+
+    y2 = len(img)
+    for each_row_ind in range(len(img)):
+        if(torch.equal(img[-(each_row_ind+1)], torch.Tensor([0.0 for i in range(176)]))): y2 -= 1
+        else: break
+
+    x1 = -1
+    transpose_lab = torch.t(img)
+    for each_col in transpose_lab:
+        if(torch.equal(each_col, torch.Tensor([0.0 for i in range(176)]))): x1 += 1
+        else: break
+
+    x2 = len(img)
+    transpose_lab = torch.t(img)
+    for each_row_ind in range(len(img)):
+        if(torch.equal(transpose_lab[-(each_row_ind+1)], torch.Tensor([0.0 for i in range(176)]))): x2 -= 1
+        else: break
+
+    if(x1>=x2 or y1>=y2): raise Exception("x1 >= x2 or y1> = y2")
+    
+    return (x1, x2, y1, y2)
+    # must return a dict with : `labels`, `boxes`, `masks`
+
+
+def find_req_target(img):
+    # make the requied list[dicts] for target to model in train phase
+    pass
+
+
 class tumor_classifn(pl.LightningModule):
     def __init__(self):
         super().__init__()
@@ -90,7 +124,7 @@ class tumor_classifn(pl.LightningModule):
     
     def training_step(self, batch, batch_ind):
         x, y = batch
-        return self.loss_func(self.model(x), y)
+        return self.loss_func(self.model(x, find_req_target(y)), y)
     
     def test_step(self, batch, batch_idx):
         x, y = batch
