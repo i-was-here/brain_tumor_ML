@@ -84,6 +84,8 @@ def bounding_box(img):
 
     returns [x1, y1, x2, y2]
     """
+    img = img.squeeze()
+    
     y1 = -1
     for each_row in img:
         if(torch.equal(each_row, torch.Tensor([0.0 for i in range(176)]))): y1 += 1
@@ -109,12 +111,39 @@ def bounding_box(img):
     if(x1>=x2 or y1>=y2): raise Exception("x1 >= x2 or y1> = y2")
     
     return [x1, y1, x2, y2]
-    # must return a dict with : `labels`, `boxes`, `masks`
+
+
+def mask(img, list_coords):
+    """
+    make sure :-
+    x1 : list_coords[0]
+    y1 : list_coords[1]
+    x2 : list_coords[2]
+    y2 : list_coords[3]
+    """
+    x1 = list_coords[0]
+    x1 += 1             # this is done to remove the last row/col selected which is complete 0s
+
+    y1 = list_coords[1]
+    y1 += 1             # this is done to remove the last row/col selected which is complete 0s
+
+    x2 = list_coords[2]
+
+    y2 = list_coords[3]
+
+    return img[y1:y2, x1:x2]
 
 
 def find_req_target(img):
     # make the requied list[dicts] for target to model in train phase
-    pass
+    # use bounding_box() for the coordinates of bounding box
+    # make a list directly for the labels part of dict
+    # must return a dict with : `labels`, `boxes`, `masks`
+    ret_dict = {}
+    ret_dict["boxes"] = bounding_box(img)
+    ret_dict["labels"] = [1]
+    ret_dict["masks"] = mask(img, ret_dict["boxes"])
+    return ret_dict
 
 
 class tumor_classifn(pl.LightningModule):
