@@ -46,10 +46,10 @@ class custom_dataset(torch.utils.data.Dataset):
     def __getitem__(self, index):
 
         with open(self.complete_dataset_images[index], "rb") as img:
-            ip_img = torch.from_numpy(np.load(img)).float()
+            ip_img = torch.from_numpy(np.load(img)).float().unsqueeze(0)
         
         with open(self.complete_dataset_labels[index], "rb") as img:
-            op_img = torch.from_numpy(np.load(img)).float()
+            op_img = torch.from_numpy(np.load(img)).float().unsqueeze(0)
         
         return ip_img, op_img
     
@@ -110,10 +110,10 @@ def bounding_box(img):
 
     if(x1>=x2 or y1>=y2): raise Exception("x1 >= x2 or y1> = y2")
     
-    return [x1, y1, x2, y2]
+    return torch.tensor([x1, y1, x2, y2])
 
 
-def mask(img, list_coords):
+def mask(list_img, list_coords):
     """
     make sure :-
     x1 : list_coords[0]
@@ -121,6 +121,8 @@ def mask(img, list_coords):
     x2 : list_coords[2]
     y2 : list_coords[3]
     """
+    img = list_img[0]
+    list_coords = list_coords[0]
     x1 = list_coords[0]
     x1 += 1             # this is done to remove the last row/col selected which is complete 0s
 
@@ -131,7 +133,7 @@ def mask(img, list_coords):
 
     y2 = list_coords[3]
 
-    return img[y1:y2, x1:x2]
+    return img.squeeze()[y1:y2, x1:x2].unsqueeze(0)
 
 
 def find_req_target(img):
@@ -140,8 +142,8 @@ def find_req_target(img):
     # make a list directly for the labels part of dict
     # must return a dict with : `labels`, `boxes`, `masks`
     ret_dict = {}
-    ret_dict["boxes"] = bounding_box(img)
-    ret_dict["labels"] = [1]
+    ret_dict["boxes"] = bounding_box(img).unsqueeze(0)
+    ret_dict["labels"] = torch.Tensor([1]).to(torch.int64)
     ret_dict["masks"] = mask(img, ret_dict["boxes"])
     return ret_dict
 
@@ -158,7 +160,9 @@ class tumor_classifn(pl.LightningModule):
     
     def training_step(self, batch, batch_ind):
         x, y = batch
-        return self.loss_func(self.model(x, find_req_target(y)), y)
+        req_target = [find_req_target(y)]
+        out = self.model(x, req_target)
+        return self.loss_func(out, y)
     
     def test_step(self, batch, batch_idx):
         x, y = batch
