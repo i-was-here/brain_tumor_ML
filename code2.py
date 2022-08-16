@@ -79,6 +79,11 @@ class classifn_model(torch.nn.Module):
 
 
 def bounding_box(img):
+    """
+    removes all the rows with all 0.0(s) and retuns the coordinates of remaining part of image
+
+    returns [x1, y1, x2, y2]
+    """
     y1 = -1
     for each_row in img:
         if(torch.equal(each_row, torch.Tensor([0.0 for i in range(176)]))): y1 += 1
@@ -103,7 +108,7 @@ def bounding_box(img):
 
     if(x1>=x2 or y1>=y2): raise Exception("x1 >= x2 or y1> = y2")
     
-    return (x1, x2, y1, y2)
+    return [x1, y1, x2, y2]
     # must return a dict with : `labels`, `boxes`, `masks`
 
 
