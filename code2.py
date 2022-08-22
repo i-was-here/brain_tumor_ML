@@ -1,11 +1,13 @@
+from pathlib import Path
 import numpy as np
 import torch
-import glob
+from glob import glob
 import imgaug.augmenters as iaa
 import pytorch_lightning as pl
 import torchvision
 from torchvision.models.detection.mask_rcnn import maskrcnn_resnet50_fpn
 from torchvision.models.feature_extraction import create_feature_extractor
+import matplotlib.pyplot as plt
 
 
 torch.manual_seed(0)
@@ -21,11 +23,18 @@ class DiceLoss(torch.nn.Module):
     def forward(self, pred, mask):
                 
         # Flatten label and prediction tensors
-        pred = torch.flatten(pred)
-        mask = torch.flatten(mask)
-        counter = (pred * mask).sum()  # Numerator       
-        denum = pred.sum() + mask.sum() + 1e-8  # Denominator. Add a small number to prevent NANS
-        dice =  (2*counter)/denum
+        try:
+            pred = torch.flatten(pred)
+            mask = torch.flatten(mask)
+            counter = (pred * mask).sum()  # Numerator       
+            denum = pred.sum() + mask.sum() + 1e-8  # Denominator. Add a small number to prevent NANS
+            dice =  (2*counter)/denum
+        except:
+            pred = torch.flatten(pred[0])
+            mask = torch.flatten(mask)
+            counter = (pred * mask).sum()  # Numerator       
+            denum = pred.sum() + mask.sum() + 1e-8  # Denominator. Add a small number to prevent NANS
+            dice =  (2*counter)/denum
         return 1 - dice
 
 
@@ -36,25 +45,50 @@ class custom_dataset(torch.utils.data.Dataset):
     0 -> LGG
     """
     def __init__(self):
-        self.HGGimages_list_address = []#glob.glob("./Preprocessed/HGG/*/data/77.npy")
-        self.HGGlabels_list = []#glob.glob("./Preprocessed/HGG/*/masks/77.npy")
-        self.LGGimages_list_address = glob.glob("./Preprocessed/LGG/*/data/77.npy")
-        self.LGGlabels_list = glob.glob("./Preprocessed/LGG/*/masks/77.npy")
-        self.complete_dataset_images = self.HGGimages_list_address + self.LGGimages_list_address
-        self.complete_dataset_labels = self.HGGlabels_list + self.LGGlabels_list
+        # self.HGGimages_list_address = []#glob.glob("./Preprocessed/HGG/*/data/77.npy")
+        # self.HGGlabels_list = []#glob.glob("./Preprocessed/HGG/*/masks/77.npy")
+        # self.LGGimages_list_address = glob.glob("./Preprocessed/LGG/*/data/77.npy")
+        # self.LGGlabels_list = glob.glob("./Preprocessed/LGG/*/masks/77.npy")
+        # self.complete_dataset_images = self.HGGimages_list_address + self.LGGimages_list_address
+        # self.complete_dataset_labels = self.HGGlabels_list + self.LGGlabels_list
+
+        # 3-D data :-
+        self.total_list = []
+        for i in glob("./Preprocessed/LGG/*"):
+            list1 = []
+            list2 = []
+            for j in glob(i+"/data/*.npy"):
+                list1.append(j)
+            for j in glob(i+"/masks/*.npy"):
+                list2.append(j)
+            self.total_list.append((list1, list2))
+    
+    def best_img(self, index):
+        data_list, mask_list = self.total_list[index]
+        max_area = 0
+        for i in range(len(mask_list)):
+            img_mask = torch.from_numpy(np.load(mask_list[i])).float().unsqueeze(0)
+            if(find_area(bounding_box(img_mask))>max_area):
+                max_area = find_area(bounding_box(img_mask))
+                final_mask_ind = mask_list[i]
+                final_data_ind = data_list[i]
+        return final_data_ind, final_mask_ind
+
     
     def __getitem__(self, index):
 
-        with open(self.complete_dataset_images[index], "rb") as img:
+        best_data_img, best_mask_img = self.best_img(index)
+        
+        with open(best_data_img, "rb") as img:
             ip_img = torch.from_numpy(np.load(img)).float().unsqueeze(0)
         
-        with open(self.complete_dataset_labels[index], "rb") as img:
+        with open(best_mask_img, "rb") as img:
             op_img = torch.from_numpy(np.load(img)).float().unsqueeze(0)
         
         return ip_img, op_img
     
     def __len__(self):
-        return len(self.complete_dataset_images)
+        return len(self.total_list)
 
 
 class classifn_model(torch.nn.Module):
@@ -108,10 +142,22 @@ def bounding_box(img):
         if(torch.equal(transpose_lab[-(each_row_ind+1)], torch.Tensor([0.0 for i in range(176)]))): x2 -= 1
         else: break
 
-    if(x1>=x2 or y1>=y2): raise Exception("x1 >= x2 or y1> = y2")
+    if(x1>=x2 or y1>=y2): return torch.tensor([0, 0, 0, 0])
     
     return torch.tensor([x1, y1, x2, y2])
 
+
+def find_area(coords):
+    x1 = coords[0]
+    y1 = coords[1]
+    x2 = coords[2]
+    y2 = coords[3]
+
+    length = x2-x1
+    height = y2-y1
+
+    return length*height
+    
 
 def mask(list_img, list_coords):
     """
@@ -162,11 +208,15 @@ class tumor_classifn(pl.LightningModule):
         x, y = batch
         req_target = [find_req_target(y)]
         out = self.model(x, req_target)
-        return self.loss_func(out, y)
+        # return self.loss_func(out, y)
+        return out["loss_box_reg"]
     
     def test_step(self, batch, batch_idx):
         x, y = batch
-        return self.loss_func(self.model(x), y)
+        return self.loss_func(self.model(x)[0]["masks"][0].squeeze(), y)
+    
+    def predict_step(self, batch, batch_idx):
+        return self.model(batch[0])
     
     def configure_optimizers(self):
         return self.opt
@@ -187,7 +237,10 @@ test_loader = torch.utils.data.DataLoader(test_data, batch_size=1, shuffle=True)
 #     iaa.Affine(scale=(0.9, 1.1), rotate=(-30, 30))
 # ])
 
-trainer = pl.Trainer(max_epochs=8)
+trainer = pl.Trainer(max_epochs=1)
 model = tumor_classifn()
 trainer.fit(model=model, train_dataloaders=train_loader)
 trainer.test(model=model, dataloaders=test_loader)
+
+prediction = trainer.predict(model, dataloaders=test_loader)
+plt.imsave("prediction.jpg", prediction[0][0]["masks"][0].squeeze())
