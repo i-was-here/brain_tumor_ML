@@ -1,3 +1,3 @@
-Code 1 == Model 1 (Detection of Cancer) Training
-Completely_working == Model 1 (Detection of Cancer) GradCAM Implementation
-Code 2 == Collection And Preprocessing of Data for Model 2 (Classification of Cancer)
+# code1.py -> classification of the segmented image into classes: LGG, HGG.
+# code2.py -> segmenting out the tumor part from the Brain MRI scan
+preprocessing.py -> preprocessing and selecting few slices from the 3D MRI scans
