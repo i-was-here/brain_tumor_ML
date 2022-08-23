@@ -3,10 +3,15 @@
 *.gz
 *.nii
 *.tif
-test.ipynb
+test*.ipynb
 code2.py
 Preprocessed/
 tempCodeRunnerFile.py
 lightning_logs/
 .vscode/*
 prediction.jpg
+BraTS*/*
+*.gif
+01-Preprocessing.ipynb
+LGG*/*
+prepro.ipynb
