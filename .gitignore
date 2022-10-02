@@ -15,3 +15,4 @@ BraTS*/*
 01-Preprocessing.ipynb
 LGG*/*
 prepro.ipynb
+model.ckpt

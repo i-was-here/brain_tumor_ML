@@ -8,7 +8,7 @@ import torchvision
 from torchvision.models.detection.mask_rcnn import maskrcnn_resnet50_fpn
 from torchvision.models.feature_extraction import create_feature_extractor
 import matplotlib.pyplot as plt
-
+from matplotlib.patches import Rectangle
 
 torch.manual_seed(0)
 
@@ -45,50 +45,26 @@ class custom_dataset(torch.utils.data.Dataset):
     0 -> LGG
     """
     def __init__(self):
-        # self.HGGimages_list_address = []#glob.glob("./Preprocessed/HGG/*/data/77.npy")
-        # self.HGGlabels_list = []#glob.glob("./Preprocessed/HGG/*/masks/77.npy")
-        # self.LGGimages_list_address = glob.glob("./Preprocessed/LGG/*/data/77.npy")
-        # self.LGGlabels_list = glob.glob("./Preprocessed/LGG/*/masks/77.npy")
-        # self.complete_dataset_images = self.HGGimages_list_address + self.LGGimages_list_address
-        # self.complete_dataset_labels = self.HGGlabels_list + self.LGGlabels_list
-
-        # 3-D data :-
-        self.total_list = []
-        for i in glob("./Preprocessed/LGG/*"):
-            list1 = []
-            list2 = []
+        self.total_data_list = []
+        for i in glob("./new_prepro/LGG/*"):
             for j in glob(i+"/data/*.npy"):
-                list1.append(j)
-            for j in glob(i+"/masks/*.npy"):
-                list2.append(j)
-            self.total_list.append((list1, list2))
-    
-    def best_img(self, index):
-        data_list, mask_list = self.total_list[index]
-        max_area = 0
-        for i in range(len(mask_list)):
-            img_mask = torch.from_numpy(np.load(mask_list[i])).float().unsqueeze(0)
-            if(find_area(bounding_box(img_mask))>max_area):
-                max_area = find_area(bounding_box(img_mask))
-                final_mask_ind = mask_list[i]
-                final_data_ind = data_list[i]
-        return final_data_ind, final_mask_ind
-
+                self.total_data_list.append(j)
     
     def __getitem__(self, index):
 
-        best_data_img, best_mask_img = self.best_img(index)
+        data_img = self.total_data_list[index]
+        mask_img = self.total_data_list[index].replace("data", "mask")
         
-        with open(best_data_img, "rb") as img:
+        with open(data_img, "rb") as img:
             ip_img = torch.from_numpy(np.load(img)).float().unsqueeze(0)
         
-        with open(best_mask_img, "rb") as img:
+        with open(mask_img, "rb") as img:
             op_img = torch.from_numpy(np.load(img)).float().unsqueeze(0)
         
         return ip_img, op_img
     
     def __len__(self):
-        return len(self.total_list)
+        return len(self.total_data_list)
 
 
 class classifn_model(torch.nn.Module):
@@ -194,9 +170,26 @@ def find_req_target(img):
     return ret_dict
 
 
+def print_results(preds, test_loader, counter=1):
+    j=0
+    for img, lab in test_loader:
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 8))
+        ax1.imshow(img[0][0])
+        for i in range(len(preds[0][0]['boxes'])):
+            patch = Rectangle((preds[0][0]['boxes'][i][0], preds[0][0]['boxes'][i][1]), abs(preds[0][0]['boxes'][i][0]-preds[0][0]['boxes'][i][2]), abs(preds[0][0]['boxes'][i][1]-preds[0][0]['boxes'][i][3]), fc='none', ec='r', lw=1)
+            ax1.add_patch(patch)
+        ax2.imshow(lab.squeeze())
+        plt.show()
+        print("\n\n\n")
+        j += 1
+        if(j>=counter):
+            break
+
+
 class tumor_classifn(pl.LightningModule):
     def __init__(self):
         super().__init__()
+        # Look into : self.save_hyperparameters()
         self.model = maskrcnn_resnet50_fpn(pretrained=True)
         self.opt = torch.optim.Adam(self.model.parameters())
         self.loss_func = DiceLoss()
@@ -225,7 +218,11 @@ class tumor_classifn(pl.LightningModule):
 total_data = custom_dataset()
 lenght_dataset = total_data.__len__()
 
-train_data, test_data = torch.utils.data.random_split(total_data, [int(0.6*lenght_dataset), lenght_dataset-int(0.6*lenght_dataset)], generator=torch.Generator().manual_seed(0))
+train_data, test_data = torch.utils.data.random_split(
+                                    total_data,
+                                    [int(0.6*lenght_dataset), lenght_dataset-int(0.6*lenght_dataset)],
+                                    generator=torch.Generator().manual_seed(0)
+                                    )
 
 train_loader = torch.utils.data.DataLoader(train_data, batch_size=1, shuffle=True)
 test_loader = torch.utils.data.DataLoader(test_data, batch_size=1, shuffle=True)
@@ -239,8 +236,16 @@ test_loader = torch.utils.data.DataLoader(test_data, batch_size=1, shuffle=True)
 
 trainer = pl.Trainer(max_epochs=1)
 model = tumor_classifn()
-trainer.fit(model=model, train_dataloaders=train_loader)
-trainer.test(model=model, dataloaders=test_loader)
 
-prediction = trainer.predict(model, dataloaders=test_loader)
-plt.imsave("prediction.jpg", prediction[0][0]["masks"][0].squeeze())
+# # -- the following part has been executed once and we shall use the loaded model only from now !!!
+# trainer.fit(model=model, train_dataloaders=train_loader)
+# trainer.test(model=model, dataloaders=test_loader)
+# trainer.save_checkpoint("model.ckpt")
+
+# # -- the following part is to be executed to load saved model !!!
+model = tumor_classifn.load_from_checkpoint(checkpoint_path="model.ckpt", strict=False)
+# GOTO: https://pytorch-lightning.readthedocs.io/en/1.4.3/common/weights_loading.html#manual-saving
+
+prediction = trainer.predict(model=model, dataloaders=test_loader)
+
+print_results(prediction, test_loader, 2)
