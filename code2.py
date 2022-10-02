@@ -56,7 +56,7 @@ class custom_dataset(torch.utils.data.Dataset):
         mask_img = self.total_data_list[index].replace("data", "mask")
         
         with open(data_img, "rb") as img:
-            ip_img = torch.from_numpy(np.load(img)).float().unsqueeze(0)
+            ip_img = torch.from_numpy(gray_to_hsv(np.load(img)[np.newaxis,:,:])).float()
         
         with open(mask_img, "rb") as img:
             op_img = torch.from_numpy(np.load(img)).float().unsqueeze(0)
@@ -172,18 +172,44 @@ def find_req_target(img):
 
 def print_results(preds, test_loader, counter=1):
     j=0
+    pred_count = 0
     for img, lab in test_loader:
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 8))
         ax1.imshow(img[0][0])
-        for i in range(len(preds[0][0]['boxes'])):
-            patch = Rectangle((preds[0][0]['boxes'][i][0], preds[0][0]['boxes'][i][1]), abs(preds[0][0]['boxes'][i][0]-preds[0][0]['boxes'][i][2]), abs(preds[0][0]['boxes'][i][1]-preds[0][0]['boxes'][i][3]), fc='none', ec='r', lw=1)
+        for i in range(len(preds[pred_count][0]['boxes'])):
+            patch = Rectangle((preds[pred_count][0]['boxes'][i][0], preds[pred_count][0]['boxes'][i][1]), abs(preds[pred_count][0]['boxes'][i][0]-preds[pred_count][0]['boxes'][i][2]), abs(preds[pred_count][0]['boxes'][i][1]-preds[pred_count][0]['boxes'][i][3]), fc='none', ec='r', lw=1)
             ax1.add_patch(patch)
         ax2.imshow(lab.squeeze())
         plt.show()
         print("\n\n\n")
         j += 1
+        pred_count += 1
         if(j>=counter):
             break
+
+
+def gray_to_hsv(numpy_img, th=140):
+    """
+    numpy_img must be of shape (1, 160, 160)
+
+    and it returns an img of shape (3, 160, 160)
+    """
+    numpy_img = numpy_img.squeeze()
+
+    h = numpy_img.copy()    # use 1-g
+    s = numpy_img.copy()    # use threshold
+    l = numpy_img.copy()    # it remains same
+
+    h = 255 - h
+
+    s = numpy_img.copy()
+
+    s[s<th] = 0
+    s[s>=th] = 255
+
+    hsv_img = np.array([h, s, l])
+
+    return hsv_img
 
 
 class tumor_classifn(pl.LightningModule):
@@ -238,14 +264,14 @@ trainer = pl.Trainer(max_epochs=1)
 model = tumor_classifn()
 
 # # -- the following part has been executed once and we shall use the loaded model only from now !!!
-# trainer.fit(model=model, train_dataloaders=train_loader)
-# trainer.test(model=model, dataloaders=test_loader)
-# trainer.save_checkpoint("model.ckpt")
+trainer.fit(model=model, train_dataloaders=train_loader)
+trainer.test(model=model, dataloaders=test_loader)
+trainer.save_checkpoint("model.ckpt")
 
 # # -- the following part is to be executed to load saved model !!!
-model = tumor_classifn.load_from_checkpoint(checkpoint_path="model.ckpt", strict=False)
+# model = tumor_classifn.load_from_checkpoint(checkpoint_path="model.ckpt", strict=False)
 # GOTO: https://pytorch-lightning.readthedocs.io/en/1.4.3/common/weights_loading.html#manual-saving
 
 prediction = trainer.predict(model=model, dataloaders=test_loader)
 
-print_results(prediction, test_loader, 2)
+print_results(prediction, test_loader)
